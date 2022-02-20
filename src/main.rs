@@ -33,21 +33,31 @@ enum Opt {
 }
 
 fn handle_diff(source: PathBuf, modded: PathBuf, output: PathBuf, is_text: bool) {
-    let source = prcx::prc::open(source).unwrap();
-    let modded = prcx::prc::open(modded).unwrap();
-    let diff = prcx::diff::Diff::generate(&source, &modded);
-    diff.save(output, is_text).unwrap();
+    let source = prcx::open(source).unwrap();
+    let modded = prcx::open(modded).unwrap();
+    let diff = prcx::generate_patch(&source, &modded).unwrap();
+    match diff {
+        Some(diff) => {
+            if is_text {
+                let mut file = std::io::BufWriter::new(std::fs::File::create(output).unwrap());
+                prcx::write_xml(&diff, &mut file).unwrap();
+            } else {
+                prcx::save(output, &diff).unwrap();
+            }
+        },
+        None => println!("No differences were found between the two files")
+    }
 }
 
 fn handle_patch(source: PathBuf, patch: PathBuf, output: PathBuf) {
-    let mut source = prcx::prc::open(source).unwrap();
-    let patch = if let Ok(patch) = prcx::diff::Diff::open(&patch) {
+    let mut source = prcx::open(source).unwrap();
+    let patch = if let Ok(patch) = prcx::open(&patch) {
         patch
     } else {
-        prcx::diff::Diff::open_bin(patch).unwrap()
+        prcx::read_xml(&mut std::io::BufReader::new(std::fs::File::open(patch).unwrap())).unwrap()
     };
-    patch.apply(&mut source);
-    prcx::prc::save(output, &source).unwrap();
+    prcx::apply_patch(&patch, &mut source).unwrap();
+    prcx::save(output, &source).unwrap();
 }
 
 fn main() {
@@ -55,16 +65,15 @@ fn main() {
     match opt {
         Opt::Diff { source, modded, output, out_type, hashes } => {
             if let Some(hashes) = hashes {
-                let file = std::fs::read_to_string(hashes).unwrap();
-                let hashes = file.lines().map(|x| x.trim().split(",").last().unwrap()).collect();
-                prcx::hash::add_hashes(hashes);
+                let labels = prcx::hash40::read_custom_labels(hashes).unwrap();
+                prcx::hash40::set_custom_labels(labels.into_iter());
             }
-            let is_text = if out_type == "text" {
+            let is_text = if out_type == "xml" {
                 true
             } else if out_type == "bin" {
                 false
             } else {
-                eprintln!("Output type must be either \"test\" or \"bin\"");
+                eprintln!("Output type must be either \"xml\" or \"bin\"");
                 exit(1);
             };
             handle_diff(source, modded, output, is_text);
