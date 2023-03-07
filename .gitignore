@@ -1,1 +1,3 @@
 /target
+/prcx/**
+.DS_Store
