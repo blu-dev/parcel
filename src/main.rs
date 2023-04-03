@@ -1,13 +1,13 @@
-use structopt::StructOpt;
 use std::path::PathBuf;
 use std::process::exit;
+use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 enum Opt {
     Diff {
         #[structopt(parse(from_os_str))]
         source: PathBuf,
-        
+
         #[structopt(parse(from_os_str))]
         modded: PathBuf,
 
@@ -18,7 +18,7 @@ enum Opt {
         out_type: String,
 
         #[structopt(short, long)]
-        hashes: Option<PathBuf>
+        hashes: Option<PathBuf>,
     },
     Patch {
         #[structopt(parse(from_os_str))]
@@ -28,8 +28,8 @@ enum Opt {
         patch: PathBuf,
 
         #[structopt(parse(from_os_str))]
-        output: PathBuf
-    }
+        output: PathBuf,
+    },
 }
 
 fn handle_diff(source: PathBuf, modded: PathBuf, output: PathBuf, is_text: bool) {
@@ -44,8 +44,8 @@ fn handle_diff(source: PathBuf, modded: PathBuf, output: PathBuf, is_text: bool)
             } else {
                 prcx::save(output, &diff).unwrap();
             }
-        },
-        None => println!("No differences were found between the two files")
+        }
+        None => println!("No differences were found between the two files"),
     }
 }
 
@@ -54,7 +54,10 @@ fn handle_patch(source: PathBuf, patch: PathBuf, output: PathBuf) {
     let patch = if let Ok(patch) = prcx::open(&patch) {
         patch
     } else {
-        prcx::read_xml(&mut std::io::BufReader::new(std::fs::File::open(patch).unwrap())).unwrap()
+        prcx::read_xml(&mut std::io::BufReader::new(
+            std::fs::File::open(patch).unwrap(),
+        ))
+        .unwrap()
     };
     prcx::apply_patch(&patch, &mut source).unwrap();
     prcx::save(output, &source).unwrap();
@@ -63,10 +66,19 @@ fn handle_patch(source: PathBuf, patch: PathBuf, output: PathBuf) {
 fn main() {
     let opt = Opt::from_args();
     match opt {
-        Opt::Diff { source, modded, output, out_type, hashes } => {
+        Opt::Diff {
+            source,
+            modded,
+            output,
+            out_type,
+            hashes,
+        } => {
             if let Some(hashes) = hashes {
-                let labels = prcx::hash40::read_custom_labels(hashes).unwrap();
-                prcx::hash40::set_custom_labels(labels.into_iter());
+                let labels = prcx::hash40::label_map::LabelMap::read_custom_labels(hashes).unwrap();
+                prcx::hash40::Hash40::label_map()
+                    .lock()
+                    .unwrap()
+                    .add_custom_labels(labels.into_iter());
             }
             let is_text = if out_type == "xml" {
                 true
@@ -77,7 +89,11 @@ fn main() {
                 exit(1);
             };
             handle_diff(source, modded, output, is_text);
-        },
-        Opt::Patch { source, patch, output } => handle_patch(source, patch, output)
+        }
+        Opt::Patch {
+            source,
+            patch,
+            output,
+        } => handle_patch(source, patch, output),
     }
 }
